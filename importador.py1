@@ -1,0 +1,146 @@
+# importador.py
+import os
+import sqlite3
+import pandas as pd
+from config import DB_PATH, EXCEL_PATH
+
+def obter_mtime_excel():
+    if not os.path.exists(EXCEL_PATH):
+        return None
+    return os.path.getmtime(EXCEL_PATH)
+
+def verificar_e_atualizar():
+    mtime_atual = obter_mtime_excel()
+    if mtime_atual is None:
+        return False  # Sem arquivo Excel para processar
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Cria tabela de controle se não existir
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS controle_importacao (
+            chave TEXT PRIMARY KEY,
+            valor TEXT
+        )
+    """)
+    conn.commit()
+
+    # Busca o último mtime registrado
+    cursor.execute("SELECT valor FROM controle_importacao WHERE chave = 'ultimo_mtime'")
+    row = cursor.fetchone()
+    ultimo_mtime = float(row[0]) if row else None
+
+    # Se o banco não existir, estiver vazio ou o Excel for mais recente: Reimporta
+    if ultimo_mtime is None or mtime_atual > ultimo_mtime:
+        importar_dados(conn, mtime_atual)
+        conn.close()
+        return True
+
+    conn.close()
+    return False
+
+def importar_dados(conn, mtime):
+    # Lendo o Excel
+    df = pd.read_excel(EXCEL_PATH)
+
+    # 1. Remove possíveis espaços em branco extras no início ou fim dos cabeçalhos do Excel
+    df.columns = df.columns.str.strip()
+
+    # 2. Mapeamento super resiliente (previne variações de escrita comuns)
+    colunas_map = {
+        'Inquilino': 'inquilino',
+        'Número': 'numero', 'Numero': 'numero', 'Nº': 'numero',
+        'Tipo': 'tipo',
+        'Data Abertura': 'data_abertura', 'Data de Abertura': 'data_abertura',
+        'Categoria': 'categoria',
+        'Grupo': 'grupo',
+        'Descrição': 'descricao', 'Descricao': 'descricao',
+        'Data Resolução': 'data_resolucao', 'Data de Resolução': 'data_resolucao', 'Data Resolucao': 'data_resolucao',
+        'Data Fechamento': 'data_fechamento', 'Data de Fechamento': 'data_fechamento',
+        'Método Relatado': 'metodo_relatado', 'Método de Relato': 'metodo_relatado', 'Metodo Relatado': 'metodo_relatado',
+        'Resolvido Por': 'resolvido_por', 'Resolvido por': 'resolvido_por',
+        'SLA Vencido': 'sla_vencido', 'Sla Vencido': 'sla_vencido',
+        'Autor': 'autor',
+        'Usuário': 'usuario', 'Usuario': 'usuario',
+        'Prioridade': 'prioridade',
+        'Cidade Cliente': 'cidade_cliente', 'Cidade': 'cidade_cliente',
+        'Endereço Cliente': 'endereco_cliente', 'Endereço': 'endereco_cliente', 'Endereco': 'endereco_cliente',
+        'Estado': 'estado',
+        'Comarca': 'comarca'
+    }
+    df = df.rename(columns=colunas_map)
+
+    # 3. Lista exata de colunas aceitas pelo seu Schema SQLite
+    colunas_banco = [
+        'inquilino', 'numero', 'tipo', 'data_abertura', 'categoria', 'grupo',
+        'descricao', 'data_resolucao', 'data_fechamento', 'metodo_relatado',
+        'resolvido_por', 'sla_vencido', 'autor', 'usuario', 'prioridade',
+        'cidade_cliente', 'endereco_cliente', 'estado', 'comarca'
+    ]
+    
+    # Filtra o DataFrame mantendo APENAS as colunas que existem na tabela SQLite
+    colunas_para_inserir = [col for col in colunas_banco if col in df.columns]
+    df = df[colunas_para_inserir]
+
+    # Conversão e normalização de datas para string no padrão SQLite (YYYY-MM-DD HH:MM:SS)
+    for col in ['data_abertura', 'data_resolucao', 'data_fechamento']:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors='coerce').dt.strftime('%Y-%m-%d %H:%M:%S')
+
+    cursor = conn.cursor()
+    
+    # Drops preventivos para reconstrução limpa
+    cursor.execute("DROP TABLE IF EXISTS chamados")
+    cursor.execute("DROP TABLE IF EXISTS chamados_fts")
+
+    # Criação da tabela principal com o seu Schema exato
+    cursor.execute("""
+    CREATE TABLE chamados (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        inquilino TEXT,
+        numero INTEGER,
+        tipo TEXT,
+        data_abertura DATE,
+        categoria TEXT,
+        grupo TEXT,
+        descricao TEXT,
+        data_resolucao DATETIME,
+        data_fechamento DATETIME,
+        metodo_relatado TEXT,
+        resolvido_por TEXT,
+        sla_vencido INTEGER,
+        autor TEXT,
+        usuario TEXT,
+        prioridade TEXT,
+        cidade_cliente TEXT,
+        endereco_cliente TEXT,
+        estado TEXT,
+        comarca TEXT
+    );
+    """)
+
+    # Salvando os dados de forma segura
+    df.to_sql('chamados', conn, if_exists='append', index=False)
+
+    # Criação da tabela de busca rápida (FTS5) para buscas instantâneas
+    try:
+        cursor.execute("""
+            CREATE VIRTUAL TABLE chamados_fts USING fts5(
+                id UNINDEXED, numero, autor, descricao, resolvido_por, comarca
+            )
+        """)
+        cursor.execute("""
+            INSERT INTO chamados_fts(id, numero, autor, descricao, resolvido_por, comarca)
+            SELECT id, numero, autor, descricao, resolvido_por, comarca FROM chamados
+        """)
+    except sqlite3.OperationalError:
+        # Fallback silencioso caso a extensão FTS5 não esteja ativa no ambiente Python local
+        pass
+
+    # Registra o mtime processado
+    cursor.execute(
+        "INSERT OR REPLACE INTO controle_importacao (chave, valor) VALUES ('ultimo_mtime', ?)",
+        (str(mtime),)
+    )
+    conn.commit()
