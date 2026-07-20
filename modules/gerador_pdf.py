@@ -1,6 +1,8 @@
 # modules/gerador_pdf.py
 from fpdf import FPDF
 import datetime
+import pandas as pd
+from modules.formatador import formatar_inteiro, formatar_decimal
 
 class RelatorioPDF(FPDF):
     def header(self):
@@ -77,7 +79,7 @@ def gerar_pdf_relatorio(df, filtros_str="Sem filtros", agrupamento=None):
     if agrupamento:
         pdf.cell(0, 5, normalizar_texto(f"Agrupado por: {', '.join(agrupamento).title()}"), ln=True)
     
-    pdf.cell(0, 5, f"Total de Registros: {len(df)}", ln=True)
+    pdf.cell(0, 5, f"Total de Registros: {formatar_inteiro(len(df))}", ln=True)
     pdf.ln(5)
     
     # Desenhando a Tabela
@@ -110,8 +112,27 @@ def gerar_pdf_relatorio(df, filtros_str="Sem filtros", agrupamento=None):
         else:
             pdf.set_fill_color(255, 255, 255) # Branco
             
-        for dado in linha:
-            texto = str(dado)
+        for col, dado in zip(colunas, linha):
+            # Formata o dado conforme o tipo e nome da coluna para padrão PT-BR
+            if isinstance(dado, (pd.Timestamp, datetime.datetime)):
+                texto = dado.strftime("%d/%m/%Y %H:%M:%S")
+            elif isinstance(dado, float) and not pd.isna(dado):
+                texto = formatar_decimal(dado, 1)
+            elif isinstance(dado, (int, float)) and not pd.isna(dado):
+                if str(col).lower() in ['numero', 'número', 'id']:
+                    texto = str(int(dado))
+                else:
+                    texto = formatar_inteiro(dado)
+            else:
+                texto = str(dado)
+                # Caso seja string com formato de data ISO "YYYY-MM-DD HH:MM:SS", tenta converter e formatar
+                if isinstance(dado, str) and len(dado) == 19 and dado[4] == '-' and dado[7] == '-':
+                    try:
+                        dt_val = pd.to_datetime(dado)
+                        texto = dt_val.strftime("%d/%m/%Y %H:%M:%S")
+                    except Exception:
+                        pass
+
             if len(texto) > 30:
                 texto = texto[:27] + "..."
             

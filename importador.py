@@ -90,16 +90,44 @@ def importar_dados(conn, mtime):
     df.columns = df.columns.str.strip()
 
     # Mapeamento inicial das colunas base da planilha
+    # Cobre variações com e sem acentos, e diferentes formatos de cabeçalho
     colunas_map = {
-        'Inquilino': 'inquilino', 'Número': 'numero', 'Numero': 'numero', 'Nº': 'numero',
-        'Tipo': 'tipo', 'Data Abertura': 'data_abertura', 'Data de Abertura': 'data_abertura',
-        'Categoria': 'categoria', 'Grupo': 'grupo', 'Descrição': 'descricao', 'Descricao': 'descricao',
-        'Data Resolução': 'data_resolucao', 'Data de Resolução': 'data_resolucao',
-        'Data Fechamento': 'data_fechamento', 'Data de Fechamento': 'data_fechamento',
-        'Método Relatado': 'metodo_relatado', 'Resolvido Por': 'resolvido_por', 'Resolvido por': 'resolvido_por',
-        'SLA Vencido': 'sla_vencido', 'Autor': 'autor', 'Usuário': 'usuario', 'Usuario': 'usuario',
-        'Prioridade': 'prioridade', 'Cidade Cliente': 'cidade_cliente', 'Endereço Cliente': 'endereco_cliente',
-        'Estado': 'estado', 'Comarca': 'comarca'
+        # Número do chamado
+        'Número': 'numero', 'Numero': 'numero', 'Nº': 'numero', 'N\xfamero': 'numero',
+        # Inquilino e Tipo
+        'Inquilino': 'inquilino', 'Tipo': 'tipo',
+        # Data de Abertura
+        'Data Abertura': 'data_abertura', 'Data de Abertura': 'data_abertura',
+        # Categoria e Grupo
+        'Categoria': 'categoria', 'Grupo': 'grupo',
+        # Descrição
+        'Descrição': 'descricao', 'Descricao': 'descricao', 'Descri\xe7\xe3o': 'descricao',
+        # Data de Resolução — variantes com e sem acento
+        'Data Resolução':    'data_resolucao',
+        'Data de Resolução': 'data_resolucao',
+        'Data Resolucao':    'data_resolucao',
+        'Data de Resolucao': 'data_resolucao',
+        # Data de Fechamento
+        'Data Fechamento':    'data_fechamento',
+        'Data de Fechamento': 'data_fechamento',
+        # Método Relatado — variantes com e sem acento
+        'Método Relatado':  'metodo_relatado',
+        'Metodo Relatado':  'metodo_relatado',
+        'Método de Relato': 'metodo_relatado',
+        # Resolvido Por
+        'Resolvido Por': 'resolvido_por', 'Resolvido por': 'resolvido_por',
+        # SLA
+        'SLA Vencido': 'sla_vencido', 'Sla Vencido': 'sla_vencido',
+        # Autor / Usuário
+        'Autor': 'autor', 'Usuário': 'usuario', 'Usuario': 'usuario',
+        # Prioridade
+        'Prioridade': 'prioridade',
+        # Cidade e Endereço
+        'Cidade Cliente':    'cidade_cliente', 'Cidade_Cliente': 'cidade_cliente', 'Cidade': 'cidade_cliente',
+        'Endereço Cliente':  'endereco_cliente', 'Endereco_Cliente': 'endereco_cliente',
+        'Endereço':          'endereco_cliente', 'Endereco': 'endereco_cliente',
+        # Estado e Comarca
+        'Estado': 'estado', 'Comarca': 'comarca',
     }
     df = df.rename(columns=colunas_map)
 
