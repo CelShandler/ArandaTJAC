@@ -134,6 +134,7 @@ grupo_sel      = filtro_multiselect("Grupo",        "grupo")
 categoria_sel  = filtro_multiselect("Categoria",    "categoria")
 comarca_sel    = filtro_multiselect("Comarca",      "comarca")
 tipo_sel       = filtro_multiselect("Tipo",         "tipo")
+status_sel     = filtro_multiselect("Status",       "status")
 prioridade_sel = filtro_multiselect("Prioridade",   "prioridade")
 estado_sel     = filtro_multiselect("Estado",       "estado")
 autor_sel      = filtro_multiselect("Autor",        "autor")
@@ -151,6 +152,7 @@ if grupo_sel:      df_filtrado = df_filtrado[df_filtrado['grupo'].isin(grupo_sel
 if categoria_sel:  df_filtrado = df_filtrado[df_filtrado['categoria'].isin(categoria_sel)]
 if comarca_sel:    df_filtrado = df_filtrado[df_filtrado['comarca'].isin(comarca_sel)]
 if tipo_sel:       df_filtrado = df_filtrado[df_filtrado['tipo'].isin(tipo_sel)]
+if status_sel:     df_filtrado = df_filtrado[df_filtrado['status'].isin(status_sel)]
 if prioridade_sel: df_filtrado = df_filtrado[df_filtrado['prioridade'].isin(prioridade_sel)]
 if estado_sel:     df_filtrado = df_filtrado[df_filtrado['estado'].isin(estado_sel)]
 if autor_sel:      df_filtrado = df_filtrado[df_filtrado['autor'].isin(autor_sel)]
@@ -296,8 +298,9 @@ with tab_rel:
             "Número": "numero", "Data Abertura": "data_abertura", "Grupo": "grupo",
             "Categoria": "categoria", "Comarca": "comarca", "Autor": "autor",
             "Resolvido Por": "resolvido_por", "Estado": "estado", "SLA Vencido": "sla_vencido",
-            "IP do Usuário": "user_ip", "Login": "user_login", "Nome Completo": "user_nome",
-            "Patrimônio": "user_patrimonio", "Setor": "user_setor", "Ramal": "user_ramal"
+            "Status": "status", "IP do Usuário": "user_ip", "Login": "user_login", 
+            "Nome Completo": "user_nome", "Patrimônio": "user_patrimonio", 
+            "Setor": "user_setor", "Ramal": "user_ramal"
         }
         selecionadas_nomes = []
         for nome in colunas_disponiveis.keys():

@@ -3,12 +3,18 @@ import os
 import sqlite3
 import re
 import pandas as pd
-from config import DB_PATH, EXCEL_PATH
+from config import DB_PATH, EXCEL_ATIVOS, EXCEL_FECHADOS
 
 def obter_mtime_excel():
-    if not os.path.exists(EXCEL_PATH):
+    mtimes = []
+    if os.path.exists(EXCEL_ATIVOS):
+        mtimes.append(os.path.getmtime(EXCEL_ATIVOS))
+    if os.path.exists(EXCEL_FECHADOS):
+        mtimes.append(os.path.getmtime(EXCEL_FECHADOS))
+    
+    if not mtimes:
         return None
-    return os.path.getmtime(EXCEL_PATH)
+    return max(mtimes)
 
 def extrair_dados_descricao(texto):
     """
@@ -86,7 +92,20 @@ def verificar_e_atualizar():
     return False
 
 def importar_dados(conn, mtime):
-    df = pd.read_excel(EXCEL_PATH)
+    dfs = []
+    if os.path.exists(EXCEL_ATIVOS):
+        df_a = pd.read_excel(EXCEL_ATIVOS)
+        df_a['status'] = 'Ativo'
+        dfs.append(df_a)
+    if os.path.exists(EXCEL_FECHADOS):
+        df_f = pd.read_excel(EXCEL_FECHADOS)
+        df_f['status'] = 'Fechado'
+        dfs.append(df_f)
+        
+    if not dfs:
+        return
+        
+    df = pd.concat(dfs, ignore_index=True)
     df.columns = df.columns.str.strip()
 
     # Mapeamento inicial das colunas base da planilha
@@ -166,7 +185,8 @@ def importar_dados(conn, mtime):
         'inquilino', 'numero', 'tipo', 'data_abertura', 'categoria', 'grupo', 'descricao',
         'data_resolucao', 'data_fechamento', 'metodo_relatado', 'resolvido_por', 'sla_vencido',
         'autor', 'usuario', 'prioridade', 'cidade_cliente', 'endereco_cliente', 'estado', 'comarca',
-        'user_nome', 'user_login', 'user_ip', 'user_telefone', 'user_ramal', 'user_email', 'user_setor', 'user_patrimonio'
+        'user_nome', 'user_login', 'user_ip', 'user_telefone', 'user_ramal', 'user_email', 'user_setor', 'user_patrimonio',
+        'status'
     ]
     colunas_para_inserir = [col for col in colunas_banco if col in df.columns]
     df = df[colunas_para_inserir]
@@ -184,7 +204,7 @@ def importar_dados(conn, mtime):
         resolvido_por TEXT, sla_vencido INTEGER, autor TEXT, usuario TEXT, prioridade TEXT,
         cidade_cliente TEXT, endereco_cliente TEXT, estado TEXT, comarca TEXT,
         user_nome TEXT, user_login TEXT, user_ip TEXT, user_telefone TEXT, user_ramal TEXT,
-        user_email TEXT, user_setor TEXT, user_patrimonio TEXT
+        user_email TEXT, user_setor TEXT, user_patrimonio TEXT, status TEXT
     );
     """)
 
