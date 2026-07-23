@@ -65,6 +65,8 @@ def normalizar_texto(texto):
 
 
 def gerar_pdf_relatorio(df, filtros_str="Sem filtros", agrupamento=None):
+    from fpdf.fonts import FontFace
+    
     pdf = RelatorioPDF(orientation="P", unit="mm", format="A4")
     pdf.alias_nb_pages()
     pdf.add_page()
@@ -82,38 +84,14 @@ def gerar_pdf_relatorio(df, filtros_str="Sem filtros", agrupamento=None):
     pdf.cell(0, 5, f"Total de Registros: {formatar_inteiro(len(df))}", ln=True)
     pdf.ln(5)
     
-    # Desenhando a Tabela
-    # 1. Calculando largura das colunas dinamicamente para caber em 190mm (largura útil da página A4)
+    # Prepara os dados e cabeçalhos
     colunas = list(df.columns)
-    largura_total = 190
-    largura_coluna = largura_total / len(colunas)
     
-    # 2. Cabeçalho da Tabela
-    pdf.set_font("helvetica", "B", 8)
-    pdf.set_fill_color(31, 73, 125) # Fundo azul escuro
-    pdf.set_text_color(255, 255, 255) # Texto branco
-    
-    for col in colunas:
-        titulo = str(col).title().replace("_", " ")[:20] 
-        # Passa o título pelo normalizador
-        titulo_limpo = normalizar_texto(titulo)
-        pdf.cell(largura_coluna, 8, titulo_limpo, border=1, fill=True, align="C")
-    pdf.ln()
-    
-    # 3. Dados da Tabela
-    pdf.set_font("helvetica", "", 8)
-    pdf.set_text_color(0, 0, 0)
-    
-    fill = False
+    # Normalização e formatação prévia dos dados para calcular pesos corretos
+    dados_formatados = []
     for _, linha in df.iterrows():
-        # Alternância de cores (Zebra striping)
-        if fill:
-            pdf.set_fill_color(240, 245, 250) # Azul bem claro
-        else:
-            pdf.set_fill_color(255, 255, 255) # Branco
-            
+        linha_fmt = []
         for col, dado in zip(colunas, linha):
-            # Formata o dado conforme o tipo e nome da coluna para padrão PT-BR
             if isinstance(dado, (pd.Timestamp, datetime.datetime)):
                 texto = dado.strftime("%d/%m/%Y %H:%M:%S")
             elif isinstance(dado, float) and not pd.isna(dado):
@@ -124,23 +102,73 @@ def gerar_pdf_relatorio(df, filtros_str="Sem filtros", agrupamento=None):
                 else:
                     texto = formatar_inteiro(dado)
             else:
-                texto = str(dado)
-                # Caso seja string com formato de data ISO "YYYY-MM-DD HH:MM:SS", tenta converter e formatar
-                if isinstance(dado, str) and len(dado) == 19 and dado[4] == '-' and dado[7] == '-':
+                texto = str(dado) if not pd.isna(dado) else ""
+                # Checa ISO date string
+                if isinstance(dado, str) and len(dado) == 19 and dado.count('-') >= 2 and dado.count(':') >= 2:
                     try:
                         dt_val = pd.to_datetime(dado)
                         texto = dt_val.strftime("%d/%m/%Y %H:%M:%S")
                     except Exception:
                         pass
-
-            if len(texto) > 30:
-                texto = texto[:27] + "..."
             
-            # Passa o dado pelo normalizador de texto antes de renderizar no PDF
             texto_limpo = normalizar_texto(texto)
-            pdf.cell(largura_coluna, 6, texto_limpo, border=1, fill=True, align="L")
+            
+            # Limite de segurança física da página PDF (Evita crash "row too high")
+            # FPDF2 não suporta uma célula maior que a altura de uma página inteira.
+            # Limitamos a 20 quebras de linha e 1200 caracteres no total.
+            linhas = texto_limpo.split('\n')
+            if len(linhas) > 20:
+                texto_limpo = '\n'.join(linhas[:20]) + "\n[...]"
+                
+            if len(texto_limpo) > 1200:
+                texto_limpo = texto_limpo[:1197] + "..."
+                
+            linha_fmt.append(texto_limpo)
+        dados_formatados.append(linha_fmt)
         
-        pdf.ln()
-        fill = not fill # Alterna a cor
+    # Calcula a largura proporcional (peso) de cada coluna
+    pesos = []
+    for i, col in enumerate(colunas):
+        # Tamanho inicial baseado no cabeçalho
+        max_len = len(str(col)) + 2 
         
+        # Encontra o maior texto nesta coluna (amostragem simples)
+        for linha_fmt in dados_formatados:
+            tam = len(linha_fmt[i])
+            if tam > max_len:
+                max_len = tam
+                
+        # Limita o peso máximo para não espremer muito outras colunas
+        # Descrições enormes (1000 chars) terão peso 120 no max
+        if max_len > 120: max_len = 120
+        # Tamanho mínimo para não ficar invisível
+        if max_len < 10: max_len = 10
+            
+        pesos.append(max_len)
+
+    pdf.set_font("helvetica", "", 8)
+    
+    # Estilo do cabeçalho
+    headings_style = FontFace(emphasis="B", color=255, fill_color=(31, 73, 125))
+    
+    # Desenhando a Tabela Dinâmica
+    with pdf.table(
+        col_widths=pesos,
+        text_align="LEFT",
+        headings_style=headings_style,
+        cell_fill_color=(240, 245, 250),
+        cell_fill_mode="ROWS",
+    ) as table:
+        # Cabeçalho
+        linha_cabecalho = table.row()
+        for col in colunas:
+            titulo = str(col).title().replace("_", " ")
+            linha_cabecalho.cell(normalizar_texto(titulo))
+            
+        # Linhas (dados)
+        for linha_fmt in dados_formatados:
+            r = table.row()
+            for texto in linha_fmt:
+                r.cell(texto)
+                
     return bytes(pdf.output())
